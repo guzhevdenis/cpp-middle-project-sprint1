@@ -1,0 +1,34 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Launch Debug app",
+            "program": "${workspaceFolder}/build/CryptoGuard",
+            "args": [
+                "-i",
+                "input.txt",
+                "--command",
+                "checksum"
+            ],
+            "cwd": "${workspaceFolder}/build",
+            "preLaunchTask": "GCC: Build Debug",
+            "initCommands": ["settings set target.disable-aslr false"]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Launch Debug unit_tests",
+            "program": "${workspaceFolder}/build/unit_tests",
+            "args": [
+            ],
+            "cwd": "${workspaceFolder}/build",
+            "preLaunchTask": "GCC: Build Debug",
+            "initCommands": ["settings set target.disable-aslr false"]
+        }
+    ]
+}
