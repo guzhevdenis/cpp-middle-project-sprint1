@@ -47,7 +47,11 @@ public:
         params.encrypt = 1;
         DoCrypt(inStream, outStream, params);
     }
-    void DecryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {}
+    void DecryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
+        auto params = CreateChiperParamsFromPassword(password);
+        params.encrypt = 0;
+        DoCrypt(inStream, outStream, params);
+    }
     std::string CalculateChecksum(std::iostream &inStream) { return "NOT_IMPLEMENTED"; }
 
 private:
