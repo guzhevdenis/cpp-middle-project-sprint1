@@ -22,7 +22,6 @@ struct Args {
         }
     }
 
-    // при копировании argv указывал бы на строки исходного объекта
     Args(const Args &) = delete;
     Args &operator=(const Args &) = delete;
 
@@ -35,8 +34,8 @@ void Parse(ProgramOptions &options, Args args) { options.Parse(args.argc(), args
 
 TEST(ProgramOptions, EncryptWithLongOptions) {
     ProgramOptions options;
-    Parse(options, {"CryptoGuard", "--command", "encrypt", "--input", "in.txt", "--output", "out.txt", "--password",
-                    "1234"});
+    Parse(options,
+          {"CryptoGuard", "--command", "encrypt", "--input", "in.txt", "--output", "out.txt", "--password", "1234"});
 
     EXPECT_FALSE(options.IsHelpRequested());
     EXPECT_EQ(options.GetCommand(), COMMAND_TYPE::ENCRYPT);
@@ -95,8 +94,7 @@ TEST(ProgramOptions, EncryptWithoutPasswordThrows) {
 
 TEST(ProgramOptions, DecryptWithoutOutputThrows) {
     ProgramOptions options;
-    EXPECT_THROW(Parse(options, {"CryptoGuard", "-c", "decrypt", "-i", "in.txt", "-p", "1234"}),
-                 std::invalid_argument);
+    EXPECT_THROW(Parse(options, {"CryptoGuard", "-c", "decrypt", "-i", "in.txt", "-p", "1234"}), std::invalid_argument);
 }
 
 TEST(ProgramOptions, UnknownOptionThrows) {
