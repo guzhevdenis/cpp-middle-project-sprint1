@@ -20,6 +20,11 @@ struct AesCipherParams {
     int encrypt;                              // 1 for encryption, 0 for decryption
     std::array<unsigned char, KEY_SIZE> key;  // Encryption key
     std::array<unsigned char, IV_SIZE> iv;    // Initialization vector
+
+    ~AesCipherParams() {
+        OPENSSL_cleanse(key.data(), key.size());
+        OPENSSL_cleanse(iv.data(), iv.size());
+    }
 };
 
 struct CipherCtxDeleter {
@@ -32,10 +37,21 @@ struct MdCtxDeleter {
 };
 using MdCtxPtr = std::unique_ptr<EVP_MD_CTX, MdCtxDeleter>;
 
+// Забирает из очереди OpenSSL все ошибки, оставляя её пустой
 [[noreturn]] void ThrowOpenSSLError(std::string_view what) {
+    std::string message{what};
     std::array<char, 256> buf{};
-    ERR_error_string_n(ERR_get_error(), buf.data(), buf.size());
-    throw std::runtime_error{std::string{what} + ": " + buf.data()};
+    bool first = true;
+    while (const unsigned long code = ERR_get_error()) {
+        ERR_error_string_n(code, buf.data(), buf.size());
+        message += first ? ": " : "; ";
+        message += buf.data();
+        first = false;
+    }
+    if (first) {
+        message += ": no details in OpenSSL error queue";
+    }
+    throw std::runtime_error{message};
 }
 
 }  // namespace
@@ -50,29 +66,35 @@ public:
 
     // API
     void EncryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
+        ERR_clear_error();
         auto params = CreateChiperParamsFromPassword(password);
         params.encrypt = 1;
         DoCrypt(inStream, outStream, params);
     }
     void DecryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
+        ERR_clear_error();
         auto params = CreateChiperParamsFromPassword(password);
         params.encrypt = 0;
         DoCrypt(inStream, outStream, params);
     }
     std::string CalculateChecksum(std::iostream &inStream) {
+        ERR_clear_error();
         if (!inStream.good()) {
             throw std::runtime_error{"Input stream is not ready for reading"};
         }
 
         MdCtxPtr ctx{EVP_MD_CTX_new()};
-        if (!ctx || !EVP_DigestInit_ex2(ctx.get(), EVP_sha256(), nullptr)) {
-            ThrowOpenSSLError("Failed to initialize digest");
+        if (!ctx) {
+            ThrowOpenSSLError("EVP_MD_CTX_new failed to create digest context");
+        }
+        if (!EVP_DigestInit_ex2(ctx.get(), EVP_sha256(), nullptr)) {
+            ThrowOpenSSLError("EVP_DigestInit_ex2 failed to initialize SHA-256");
         }
 
         std::array<char, BUF_SIZE> buf;
         while (inStream.read(buf.data(), buf.size()) || inStream.gcount() > 0) {
             if (!EVP_DigestUpdate(ctx.get(), buf.data(), inStream.gcount())) {
-                ThrowOpenSSLError("Failed to process data");
+                ThrowOpenSSLError("EVP_DigestUpdate failed to hash data");
             }
         }
         if (inStream.bad()) {
@@ -82,7 +104,7 @@ public:
         std::array<unsigned char, EVP_MAX_MD_SIZE> digest;
         unsigned int digestLen = 0;
         if (!EVP_DigestFinal_ex(ctx.get(), digest.data(), &digestLen)) {
-            ThrowOpenSSLError("Failed to finalize digest");
+            ThrowOpenSSLError("EVP_DigestFinal_ex failed to finalize SHA-256");
         }
 
         std::stringstream hex;
@@ -107,11 +129,11 @@ private:
 
         CipherCtxPtr ctx{EVP_CIPHER_CTX_new()};
         if (!ctx) {
-            ThrowOpenSSLError("Failed to create cipher context");
+            ThrowOpenSSLError("EVP_CIPHER_CTX_new failed to create cipher context");
         }
         if (!EVP_CipherInit_ex(ctx.get(), params.cipher, nullptr, params.key.data(), params.iv.data(),
                                params.encrypt)) {
-            ThrowOpenSSLError("Failed to initialize cipher");
+            ThrowOpenSSLError("EVP_CipherInit_ex failed to initialize AES-256-CBC");
         }
 
         std::array<unsigned char, BUF_SIZE> inBuf;
@@ -130,13 +152,16 @@ private:
             }
 
             if (!EVP_CipherUpdate(ctx.get(), outBuf.data(), &outLen, inBuf.data(), inLen)) {
-                ThrowOpenSSLError("Failed to process data");
+                ThrowOpenSSLError(params.encrypt ? "EVP_CipherUpdate failed to encrypt data"
+                                                 : "EVP_CipherUpdate failed to decrypt data");
             }
             WriteToStream(outStream, outBuf.data(), outLen);
         }
 
         if (!EVP_CipherFinal_ex(ctx.get(), outBuf.data(), &outLen)) {
-            ThrowOpenSSLError("Failed to finalize cipher");
+            ThrowOpenSSLError(
+                params.encrypt ? "EVP_CipherFinal_ex failed to finalize encryption"
+                               : "EVP_CipherFinal_ex failed to finalize decryption (wrong password or corrupted data)");
         }
         WriteToStream(outStream, outBuf.data(), outLen);
     }
@@ -157,7 +182,7 @@ private:
                                     params.key.data(), params.iv.data());
 
         if (result == 0) {
-            throw std::runtime_error{"Failed to create a key from password"};
+            ThrowOpenSSLError("EVP_BytesToKey failed to create a key from password");
         }
 
         return params;

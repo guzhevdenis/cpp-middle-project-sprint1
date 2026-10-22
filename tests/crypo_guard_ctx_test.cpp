@@ -139,3 +139,42 @@ TEST(CryptoGuardCtx, ChecksumThrowsOnBadInputStream) {
 
     ASSERT_THROW(ctx.CalculateChecksum(in), std::runtime_error);
 }
+
+TEST(CryptoGuardCtx, ChecksumBeforeEncryptAndAfterRoundTrip) {
+    std::string data;
+    for (size_t i = 0; i < 100'000; ++i) {
+        data.push_back(static_cast<char>((i * 7919) % 256));
+    }
+    CryptoGuardCtx ctx;
+
+    std::stringstream original{data};
+    const auto checksumBefore = ctx.CalculateChecksum(original);
+
+    const auto encrypted = Encrypt(data, "1234");
+    std::stringstream encryptedStream{encrypted};
+    EXPECT_NE(ctx.CalculateChecksum(encryptedStream), checksumBefore);
+
+    std::stringstream decrypted{Decrypt(encrypted, "1234")};
+    EXPECT_EQ(ctx.CalculateChecksum(decrypted), checksumBefore);
+}
+
+TEST(CryptoGuardCtx, OneContextHandlesSeveralOperations) {
+    CryptoGuardCtx ctx;
+    for (const std::string password : {"1234", "another password", "пароль"}) {
+        std::stringstream in{"Hello OpenSSL crypto world!"};
+        std::stringstream encrypted;
+        std::stringstream decrypted;
+        ctx.EncryptFile(in, encrypted, password);
+        ctx.DecryptFile(encrypted, decrypted, password);
+        EXPECT_EQ(decrypted.str(), "Hello OpenSSL crypto world!") << "password = " << password;
+    }
+}
+
+TEST(CryptoGuardCtx, DecryptThrowsOnEmptyInput) { ASSERT_THROW(Decrypt("", "1234"), std::runtime_error); }
+
+TEST(CryptoGuardCtx, ContextWorksAfterMove) {
+    CryptoGuardCtx source;
+    CryptoGuardCtx ctx{std::move(source)};
+    std::stringstream in{"abc"};
+    EXPECT_EQ(ctx.CalculateChecksum(in), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+}

@@ -112,3 +112,21 @@ TEST(ProgramOptions, DuplicateOptionThrows) {
     EXPECT_THROW(Parse(options, {"CryptoGuard", "-c", "checksum", "-i", "a.txt", "-i", "b.txt"}),
                  po::multiple_occurrences);
 }
+
+TEST(ProgramOptions, EmptyPasswordThrows) {
+    ProgramOptions options;
+    EXPECT_THROW(Parse(options, {"CryptoGuard", "-c", "encrypt", "-i", "in.txt", "-o", "out.txt", "-p", ""}),
+                 std::invalid_argument);
+}
+
+TEST(ProgramOptions, SameInputAndOutputThrows) {
+    ProgramOptions options;
+    EXPECT_THROW(Parse(options, {"CryptoGuard", "-c", "encrypt", "-i", "in.txt", "-o", "./in.txt", "-p", "1234"}),
+                 std::invalid_argument);
+}
+
+TEST(ProgramOptions, ChecksumIgnoresOutputAndPassword) {
+    ProgramOptions options;
+    EXPECT_NO_THROW(Parse(options, {"CryptoGuard", "-c", "checksum", "-i", "in.txt", "-o", "in.txt"}));
+    EXPECT_EQ(options.GetCommand(), COMMAND_TYPE::CHECKSUM);
+}
