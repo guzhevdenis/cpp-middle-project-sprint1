@@ -120,3 +120,22 @@ TEST(CryptoGuardCtx, DecryptThrowsOnBadInputStream) {
     ASSERT_THROW(ctx.DecryptFile(in, out, "1234"), std::runtime_error);
     EXPECT_TRUE(out.str().empty());
 }
+
+TEST(CryptoGuardCtx, ChecksumMatchesKnownValues) {
+    CryptoGuardCtx ctx;
+    std::stringstream empty;
+    std::stringstream abc{"abc"};
+    std::stringstream large{std::string(5000, 'a')};
+
+    EXPECT_EQ(ctx.CalculateChecksum(empty), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    EXPECT_EQ(ctx.CalculateChecksum(abc), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    EXPECT_EQ(ctx.CalculateChecksum(large), "c526c6222044dab5674de9c4ac7f4566ebb5e4d8bf9d8ea34c9cc8a7cc3c869c");
+}
+
+TEST(CryptoGuardCtx, ChecksumThrowsOnBadInputStream) {
+    CryptoGuardCtx ctx;
+    std::stringstream in{"data"};
+    in.setstate(std::ios::failbit);
+
+    ASSERT_THROW(ctx.CalculateChecksum(in), std::runtime_error);
+}
