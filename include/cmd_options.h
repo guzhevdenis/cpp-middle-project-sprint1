@@ -19,13 +19,15 @@ public:
 
     void Parse(int argc, char *argv[]);
 
+    bool IsHelpRequested() const { return helpRequested_; }
     COMMAND_TYPE GetCommand() const { return command_; }
     std::string GetInputFile() const { return inputFile_; }
     std::string GetOutputFile() const { return outputFile_; }
     std::string GetPassword() const { return password_; }
 
 private:
-    COMMAND_TYPE command_;
+    bool helpRequested_ = false;
+    COMMAND_TYPE command_ = COMMAND_TYPE::CHECKSUM;
     const std::unordered_map<std::string_view, COMMAND_TYPE> commandMapping_ = {
         {"encrypt", ProgramOptions::COMMAND_TYPE::ENCRYPT},
         {"decrypt", ProgramOptions::COMMAND_TYPE::DECRYPT},
