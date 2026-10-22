@@ -1,9 +1,11 @@
 #include "crypto_guard_ctx.h"
 #include <array>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <openssl/err.h>
 #include <openssl/evp.h>
+#include <sstream>
 #include <stdexcept>
 
 namespace CryptoGuard {
@@ -24,6 +26,11 @@ struct CipherCtxDeleter {
     void operator()(EVP_CIPHER_CTX *ctx) const noexcept { EVP_CIPHER_CTX_free(ctx); }
 };
 using CipherCtxPtr = std::unique_ptr<EVP_CIPHER_CTX, CipherCtxDeleter>;
+
+struct MdCtxDeleter {
+    void operator()(EVP_MD_CTX *ctx) const noexcept { EVP_MD_CTX_free(ctx); }
+};
+using MdCtxPtr = std::unique_ptr<EVP_MD_CTX, MdCtxDeleter>;
 
 [[noreturn]] void ThrowOpenSSLError(std::string_view what) {
     std::array<char, 256> buf{};
@@ -52,7 +59,39 @@ public:
         params.encrypt = 0;
         DoCrypt(inStream, outStream, params);
     }
-    std::string CalculateChecksum(std::iostream &inStream) { return "NOT_IMPLEMENTED"; }
+    std::string CalculateChecksum(std::iostream &inStream) {
+        if (!inStream.good()) {
+            throw std::runtime_error{"Input stream is not ready for reading"};
+        }
+
+        MdCtxPtr ctx{EVP_MD_CTX_new()};
+        if (!ctx || !EVP_DigestInit_ex2(ctx.get(), EVP_sha256(), nullptr)) {
+            ThrowOpenSSLError("Failed to initialize digest");
+        }
+
+        std::array<char, BUF_SIZE> buf;
+        while (inStream.read(buf.data(), buf.size()) || inStream.gcount() > 0) {
+            if (!EVP_DigestUpdate(ctx.get(), buf.data(), inStream.gcount())) {
+                ThrowOpenSSLError("Failed to process data");
+            }
+        }
+        if (inStream.bad()) {
+            throw std::runtime_error{"Failed to read from input stream"};
+        }
+
+        std::array<unsigned char, EVP_MAX_MD_SIZE> digest;
+        unsigned int digestLen = 0;
+        if (!EVP_DigestFinal_ex(ctx.get(), digest.data(), &digestLen)) {
+            ThrowOpenSSLError("Failed to finalize digest");
+        }
+
+        std::stringstream hex;
+        hex << std::hex << std::setfill('0');
+        for (unsigned int i = 0; i < digestLen; ++i) {
+            hex << std::setw(2) << static_cast<int>(digest[i]);
+        }
+        return hex.str();
+    }
 
 private:
     static constexpr size_t BUF_SIZE = 1024;
